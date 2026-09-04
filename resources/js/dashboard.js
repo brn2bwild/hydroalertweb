@@ -128,14 +128,14 @@ function reproducirAlarma() {
 
         const ahora = audioCtx.currentTime;
         const ciclos = 3; // cuántas veces sube y baja el tono
-        const duracionCiclo = 2.2; // segundos que dura cada "subida + bajada"
-        const frecMin = 800; // Hz — tono más grave del barrido
-        const frecMax = 1000; // Hz — tono más agudo del barrido
+        const duracionCiclo = 3.2; // segundos que dura cada "subida + bajada"
+        const frecMin = 700; // Hz — tono más grave del barrido
+        const frecMax = 800; // Hz — tono más agudo del barrido
 
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
 
-        osc.type = "sawtooth"; // más áspero y urgente que "square" o "sine"
+        osc.type = "sine"; // más áspero y urgente que "square" o "sine"
         gain.gain.setValueAtTime(0.18, ahora);
         osc.connect(gain).connect(audioCtx.destination);
 
