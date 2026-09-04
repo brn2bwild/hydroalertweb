@@ -6,7 +6,7 @@
 // Ajusta estos valores a tu instalación real.
 const CONFIG = {
     API_URL: "/api/readings", // ruta de tu GET API (relativa, funciona en local y en Hostinger)
-    REFRESH_MS: 5000, // cada cuánto se refresca el dashboard
+    REFRESH_MS: 2000, // cada cuánto se refresca el dashboard
     MAX_NIVEL_CM: 100, // nivel máximo que muestra la escala (tope de la última zona)
     DEVICE_LAT: 17.9869, // ubicación fija del dispositivo — cámbiala por la real
     DEVICE_LNG: -92.9303,
@@ -33,45 +33,82 @@ document.addEventListener("DOMContentLoaded", () => {
     cargarDashboard();
     setInterval(cargarDashboard, CONFIG.REFRESH_MS);
 
-     document.getElementById('alertDismiss')?.addEventListener('click', () => {
-    document.getElementById('alertOverlay').classList.remove('visible');
-     })
+    document.getElementById("alertDismiss")?.addEventListener("click", () => {
+        document.getElementById("alertOverlay").classList.remove("visible");
+    });
+    document
+        .getElementById("activarAudioBtn")
+        ?.addEventListener("click", desbloquearAudio);
+    document
+        .getElementById("activarAudioWelcomeBtn")
+        ?.addEventListener("click", () => {
+            desbloquearAudio();
+            cerrarBienvenida();
+        });
+    document
+        .getElementById("omitirAudioBtn")
+        ?.addEventListener("click", cerrarBienvenida);
 });
 
 let ultimaZonaAlertada = null;
 let audioCtx = null;
+function desbloquearAudio() {
+    audioCtx =
+        audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+
+    audioCtx.resume().then(() => {
+        const boton = document.getElementById("activarAudioBtn");
+        if (boton) {
+            boton.classList.add("active");
+            boton.title = "Alertas sonoras activas";
+            boton.setAttribute("aria-label", "Alertas sonoras activas");
+        }
+
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.frequency.value = 660;
+        gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        osc.connect(gain).connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.12);
+    });
+}
+
+function cerrarBienvenida() {
+    document.getElementById("welcomeOverlay")?.classList.remove("visible");
+}
 
 function manejarAlertaCritica(zona, nivel) {
-  const esZonaSegura = zona === CONFIG.ZONES[0];
+    const esZonaSegura = zona === CONFIG.ZONES[0];
 
-  if (esZonaSegura) {
-    // Al volver a Normal, "reseteamos" -- así la próxima vez que
-    // suba de nuevo, sí vuelve a avisar.
-    ultimaZonaAlertada = null;
-    return;
-  }
+    if (esZonaSegura) {
+        // Al volver a Normal, "reseteamos" -- así la próxima vez que
+        // suba de nuevo, sí vuelve a avisar.
+        ultimaZonaAlertada = null;
+        return;
+    }
 
-  if (zona.label === ultimaZonaAlertada) return; // ya avisamos de esta zona
-  ultimaZonaAlertada = zona.label;
+    if (zona.label === ultimaZonaAlertada) return; // ya avisamos de esta zona
+    ultimaZonaAlertada = zona.label;
 
-  mostrarModalAlerta(zona, nivel);
-  reproducirAlarma();
+    mostrarModalAlerta(zona, nivel);
+    reproducirAlarma();
 }
 
 function mostrarModalAlerta(zona, nivel) {
-  const overlay = document.getElementById('alertOverlay');
-  const modal = document.getElementById('alertModal');
-  const iconRing = document.getElementById('alertIconRing');
+    const overlay = document.getElementById("alertOverlay");
+    const modal = document.getElementById("alertModal");
+    const iconRing = document.getElementById("alertIconRing");
 
-  document.getElementById('alertModalTitle').textContent = zona.label;
-  document.getElementById('alertModalText').textContent =
-    `El nivel del río alcanzó ${nivel} cm.`;
+    document.getElementById("alertModalTitle").textContent = zona.label;
+    document.getElementById("alertModalText").textContent =
+        `El nivel del río alcanzó ${nivel} cm.`;
 
-  modal.style.borderColor = zona.color;
-  iconRing.style.color = zona.color;
-  iconRing.style.background = hexToRgba(zona.color, 0.15);
+    modal.style.borderColor = zona.color;
+    iconRing.style.color = zona.color;
+    iconRing.style.background = hexToRgba(zona.color, 0.15);
 
-  overlay.classList.add('visible');
+    overlay.classList.add("visible");
 }
 
 // Sirena de dos tonos generada con la Web Audio API -- no depende
@@ -81,29 +118,45 @@ function mostrarModalAlerta(zona, nivel) {
 // interactuado con la página al menos una vez (clic, tecla, etc.).
 // Es una protección estándar contra autoplay molesto, no un bug.
 function reproducirAlarma() {
-  try {
-    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    try {
+        audioCtx =
+            audioCtx ||
+            new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === "suspended") {
+            audioCtx.resume();
+        }
 
-    const duracionTono = 0.3;
-    const pausa = 0.15;
-    const frecuencias = [880, 660, 880, 660]; // patrón tipo sirena, alternando 2 tonos
+        const ahora = audioCtx.currentTime;
+        const ciclos = 3; // cuántas veces sube y baja el tono
+        const duracionCiclo = 2.2; // segundos que dura cada "subida + bajada"
+        const frecMin = 800; // Hz — tono más grave del barrido
+        const frecMax = 1000; // Hz — tono más agudo del barrido
 
-    frecuencias.forEach((freq, i) => {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
 
-      osc.type = 'square';
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        osc.type = "sawtooth"; // más áspero y urgente que "square" o "sine"
+        gain.gain.setValueAtTime(0.18, ahora);
+        osc.connect(gain).connect(audioCtx.destination);
 
-      const inicio = audioCtx.currentTime + i * (duracionTono + pausa);
-      osc.connect(gain).connect(audioCtx.destination);
-      osc.start(inicio);
-      osc.stop(inicio + duracionTono);
-    });
-  } catch (error) {
-    console.warn('No se pudo reproducir la alarma:', error);
-  }
+        for (let i = 0; i < ciclos; i++) {
+            const inicioCiclo = ahora + i * duracionCiclo;
+            osc.frequency.setValueAtTime(frecMin, inicioCiclo);
+            osc.frequency.linearRampToValueAtTime(
+                frecMax,
+                inicioCiclo + duracionCiclo / 2,
+            );
+            osc.frequency.linearRampToValueAtTime(
+                frecMin,
+                inicioCiclo + duracionCiclo,
+            );
+        }
+
+        osc.start(ahora);
+        osc.stop(ahora + ciclos * duracionCiclo);
+    } catch (error) {
+        console.warn("No se pudo reproducir la alarma:", error);
+    }
 }
 
 // ---------- Carga de datos ----------
@@ -216,28 +269,28 @@ function actualizarNivel(ultimaLectura) {
     riskDot.style.boxShadow = `0 0 8px ${zona.color}`;
 
     actualizarBanner(zona, nivel);
-  manejarAlertaCritica(zona, nivel);
+    manejarAlertaCritica(zona, nivel);
 }
 // El banner solo aparece en Precaución o Alerta — en Normal se oculta.
 // CONFIG.ZONES[0] siempre es la zona "segura" más baja.
 function actualizarBanner(zona, nivel) {
-  const banner = document.getElementById('alertBanner');
-  const dot = document.getElementById('alertDot');
-  const texto = document.getElementById('alertText');
+    const banner = document.getElementById("alertBanner");
+    const dot = document.getElementById("alertDot");
+    const texto = document.getElementById("alertText");
 
-  const esZonaSegura = zona === CONFIG.ZONES[0];
+    const esZonaSegura = zona === CONFIG.ZONES[0];
 
-  if (esZonaSegura) {
-    banner.classList.remove('visible');
-    return;
-  }
+    if (esZonaSegura) {
+        banner.classList.remove("visible");
+        return;
+    }
 
-  banner.classList.add('visible');
-  banner.style.borderColor = hexToRgba(zona.color, 0.5);
-  banner.style.background = hexToRgba(zona.color, 0.1);
-  banner.style.color = zona.color;
-  dot.style.background = zona.color;
-  texto.innerHTML = `<strong>${zona.label}</strong> — nivel actual ${nivel} cm`;
+    banner.classList.add("visible");
+    banner.style.borderColor = hexToRgba(zona.color, 0.5);
+    banner.style.background = hexToRgba(zona.color, 0.1);
+    banner.style.color = zona.color;
+    dot.style.background = zona.color;
+    texto.innerHTML = `<strong>${zona.label}</strong> — nivel actual ${nivel} cm`;
 }
 
 // ---------- Gráfica en tiempo real ----------
